@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MBTI 职业性格测试</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f5f7fa; color: #333; }
+        .container { background-color: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
+        .user-info { margin-bottom: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 8px; }
+        .user-info input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        .question-block { display: none; margin-bottom: 20px; padding: 20px; border: 1px solid #e1e4e8; border-radius: 8px; }
+        .question-block.active { display: block; }
+        .question-text { font-size: 1.1em; font-weight: bold; margin-bottom: 15px; }
+        .option { display: block; padding: 15px; margin-bottom: 10px; background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+        .option:hover { background-color: #e9ecef; }
+        .option input { margin-right: 10px; }
+        .nav-buttons { display: flex; justify-content: space-between; margin-top: 20px; }
+        button { padding: 12px 24px; border: none; border-radius: 6px; font-size: 1em; cursor: pointer; transition: background-color 0.2s; }
+        .btn-prev { background-color: #6c757d; color: white; }
+        .btn-prev:hover { background-color: #5a6268; }
+        .btn-next, .btn-submit { background-color: #007bff; color: white; }
+        .btn-next:hover, .btn-submit:hover { background-color: #0056b3; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        #result-container { display: none; text-align: center; }
+        .type-result { font-size: 3em; font-weight: bold; color: #007bff; margin: 20px 0; }
+        .btn-export { background-color: #28a745; color: white; margin-top: 20px; }
+        .btn-export:hover { background-color: #218838; }
+        .progress { text-align: center; margin-bottom: 20px; color: #666; font-weight: bold; }
+        .error { color: #dc3545; font-size: 0.9em; margin-top: 5px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>MBTI 职业性格测试</h1>
+        
+        <div id="intro-screen">
+            <div class="user-info">
+                <h3>请填写基本信息开始测试</h3>
+                <input type="text" id="userName" placeholder="姓名 (必填)" required>
+                <div id="nameError" class="error">请输入姓名</div>
+                <input type="text" id="department" placeholder="部门">
+                <button class="btn-next" onclick="startTest()" style="width: 100%; margin-top: 15px;">开始测试</button>
+            </div>
+        </div>
+
+        <div id="test-screen" style="display: none;">
+            <div class="progress" id="progress">题目: 1 / 70</div>
+            <div id="questions-container"></div>
+            <div class="nav-buttons">
+                <button class="btn-prev" id="btnPrev" onclick="prevQuestion()" disabled>上一题</button>
+                <button class="btn-next" id="btnNext" onclick="nextQuestion()">下一题</button>
+                <button class="btn-submit" id="btnSubmit" onclick="submitTest()" style="display: none;">提交查看结果</button>
+            </div>
+        </div>
+
+        <div id="result-screen" style="display: none;">
+            <h2>测试完成！</h2>
+            <p>您的MBTI性格类型是：</p>
+            <div class="type-result" id="mbti-type"></div>
+            <p id="mbti-desc" style="color: #666; margin-bottom: 30px;"></p>
+            <button class="btn-export" onclick="exportToExcel()">导出测试结果至Excel</button>
+            <button class="btn-next" onclick="location.reload()" style="margin-left: 10px;">重新测试</button>
+        </div>
+    </div>
+
+    <script>
+        const questionsData = [
+            {id: 1, text: "在聚会上,你", options: [{val: "a", text: "与很多人交流,包括陌生人"}, {val: "b", text: "与少数认识的人交流"}]},
+            {id: 2, text: "你是", options: [{val: "a", text: "现实的、实际的、较少投机冒险"}, {val: "b", text: "经常投机冒险,不太现实"}]},
+            {id: 3, text: "哪个更坏?", options: [{val: "a", text: "异想天开"}, {val: "b", text: "墨守成规"}]},
+            {id: 4, text: "你更容易受什么影响?", options: [{val: "a", text: "规则、制度"}, {val: "b", text: "感觉、情感"}]},
+            {id: 5, text: "你更会被什么左右?", options: [{val: "a", text: "以理服人"}, {val: "b", text: "以情动人"}]},
+            {id: 6, text: "你较喜欢的工作是", options: [{val: "a", text: "有明确的时间限制的"}, {val: "b", text: "时间不固定的"}]},
+            {id: 7, text: "你倾向于怎样作选择", options: [{val: "a", text: "非常谨慎"}, {val: "b", text: "有点冲动"}]},
+            {id: 8, text: "在聚会上,你", options: [{val: "a", text: "留到很晚,兴致越来越高"}, {val: "b", text: "很早就走,精神不济"}]},
+            {id: 9, text: "你更会被哪种人吸引?", options: [{val: "a", text: "理智的人"}, {val: "b", text: "想象力丰富的人"}]},
+            {id: 10, text: "你对什么事务更感兴趣?", options: [{val: "a", text: "真实的"}, {val: "b", text: "可能的"}]},
+            {id: 11, text: "评判他人时,你更会被什么影响?", options: [{val: "a", text: "原则甚于当时的情况"}, {val: "b", text: "当时的情况甚于原则"}]},
+            {id: 12, text: "在与别人打交道时,你倾向于", options: [{val: "a", text: "有目的的交往"}, {val: "b", text: "只是个人的交往"}]},
+            {id: 13, text: "你较为", options: [{val: "a", text: "准时"}, {val: "b", text: "闲散"}]},
+            {id: 14, text: "什么更使你烦恼", options: [{val: "a", text: "未完成的事情"}, {val: "b", text: "已完成了的事情"}]},
+            {id: 15, text: "在你的社交圈子里,你", options: [{val: "a", text: "对别人的消息很灵通"}, {val: "b", text: "消息落伍"}]},
+            {id: 16, text: "做常规工作时,你会", options: [{val: "a", text: "用通常的办法"}, {val: "b", text: "用自己的办法"}]},
+            {id: 17, text: "作家们应该", options: [{val: "a", text: "“表达他们的意思,而且写的就应该是他们所要表达的”"}, {val: "b", text: "更多的用比喻、修辞的手法表达事物"}]},
+            {id: 18, text: "你更赞同", options: [{val: "a", text: "坚持己见"}, {val: "b", text: "和谐的人际关系"}]},
+            {id: 19, text: "你更适于作", options: [{val: "a", text: "逻辑判断"}, {val: "b", text: "价值判断"}]},
+            {id: 20, text: "你喜欢事情", options: [{val: "a", text: "被决定和确定"}, {val: "b", text: "未被决定或确定"}]},
+            {id: 21, text: "你觉得你比较", options: [{val: "a", text: "严肃和坚决"}, {val: "b", text: "随和"}]},
+            {id: 22, text: "在打电话时,你", options: [{val: "a", text: "很少怀疑自己是否辞能达意"}, {val: "b", text: "会练习要说的话"}]},
+            {id: 23, text: "事实", options: [{val: "a", text: "“是为事实本身说话”"}, {val: "b", text: "阐明道理"}]},
+            {id: 24, text: "好幻想的人", options: [{val: "a", text: "有点令人讨厌"}, {val: "b", text: "非常迷人"}]},
+            {id: 25, text: "你更经常是一个", options: [{val: "a", text: "冷淡的人"}, {val: "b", text: "热心肠的人"}]},
+            {id: 26, text: "哪个更坏?", options: [{val: "a", text: "不公正"}, {val: "b", text: "没有同情心"}]},
+            {id: 27, text: "人们通常应该让事件", options: [{val: "a", text: "在经过谨慎的筛选与选择之后发生"}, {val: "b", text: "随机、偶然地发生"}]},
+            {id: 28, text: "你在什么时候感觉更好", options: [{val: "a", text: "购物后"}, {val: "b", text: "挑选商品时"}]},
+            {id: 29, text: "在公司里,你", options: [{val: "a", text: "主动与人交谈"}, {val: "b", text: "等待他人和你交谈"}]},
+            {id: 30, text: "常识", options: [{val: "a", text: "很少是可疑的"}, {val: "b", text: "经常很可疑"}]},
+            {id: 31, text: "孩子们通常总是不能", options: [{val: "a", text: "让他们自己变得足够有用"}, {val: "b", text: "能充分发挥其想象力"}]},
+            {id: 32, text: "在作决定时,你对什么感到更轻松", options: [{val: "a", text: "标准、原则"}, {val: "b", text: "感觉"}]},
+            {id: 33, text: "你是", options: [{val: "a", text: "坚定甚于温和"}, {val: "b", text: "温和甚于坚定"}]},
+            {id: 34, text: "什么更受敬重", options: [{val: "a", text: "组织能力、出谋划策"}, {val: "b", text: "适应能力、随遇而安"}]},
+            {id: 35, text: "你觉得什么更有价值", options: [{val: "a", text: "已确定的"}, {val: "b", text: "无限制的、开放的"}]},
+            {id: 36, text: "未经历过的、非常规的人际交往使你", options: [{val: "a", text: "感到刺激、引发活力"}, {val: "b", text: "感到压力和负担"}]},
+            {id: 37, text: "你通常是一个", options: [{val: "a", text: "实用主义的人"}, {val: "b", text: "幻想型的人"}]},
+            {id: 38, text: "你更会去", options: [{val: "a", text: "判断别人是否有用"}, {val: "b", text: "想他人所想"}]},
+            {id: 39, text: "什么更让人满意", options: [{val: "a", text: "彻底地对某一问题进行讨论"}, {val: "b", text: "就某一问题达成一致意见"}]},
+            {id: 40, text: "你更多的受什么支配", options: [{val: "a", text: "头脑"}, {val: "b", text: "心灵"}]},
+            {id: 41, text: "你对什么样的工作感到更得心应手", options: [{val: "a", text: "有严格规定的、按部就班的"}, {val: "b", text: "缺少标准的"}]},
+            {id: 42, text: "你会试着去寻找", options: [{val: "a", text: "按次序的事物"}, {val: "b", text: "任何发生或出现的事物"}]},
+            {id: 43, text: "你宁愿", options: [{val: "a", text: "拥有许多交情一般的朋友"}, {val: "b", text: "有一些交往很久的朋友"}]},
+            {id: 44, text: "你行事多以什么为依据", options: [{val: "a", text: "事实"}, {val: "b", text: "原则"}]},
+            {id: 45, text: "你对什么更感兴趣", options: [{val: "a", text: "生产与分销"}, {val: "b", text: "设计与研究"}]},
+            {id: 46, text: "哪一句话更像是恭维", options: [{val: "a", text: "“这是一个非常理性的人”"}, {val: "b", text: "“这是一个感情非常丰富的人”"}]},
+            {id: 47, text: "你更会把自己评价为", options: [{val: "a", text: "一个坚定的人"}, {val: "b", text: "一个投入的人"}]},
+            {id: 48, text: "你通常偏爱", options: [{val: "a", text: "最终的、不容改变的陈述"}, {val: "b", text: "尝试性的、最初的陈述"}]},
+            {id: 49, text: "什么时候你感到更轻松", options: [{val: "a", text: "做了决定以后"}, {val: "b", text: "作决定以前"}]},
+            {id: 50, text: "你会", options: [{val: "a", text: "与陌生人轻松地交谈很长时间"}, {val: "b", text: "几乎找不到与陌生人聊天的话题"}]},
+            {id: 51, text: "你更信任你的", options: [{val: "a", text: "经验"}, {val: "b", text: "预感"}]},
+            {id: 52, text: "你觉得你更", options: [{val: "a", text: "富有实际经验甚于具有创造才能"}, {val: "b", text: "具有创造才能甚于富有实际经验"}]},
+            {id: 53, text: "哪种人更会受到赞许", options: [{val: "a", text: "条理清楚的人"}, {val: "b", text: "感情强烈的人"}]},
+            {id: 54, text: "你更倾向于显得", options: [{val: "a", text: "公正、公平"}, {val: "b", text: "富有同情心"}]},
+            {id: 55, text: "什么是更可取的", options: [{val: "a", text: "确定事情都已被安排好了"}, {val: "b", text: "随遇而安"}]},
+            {id: 56, text: "大部分事情之间的关系都是", options: [{val: "a", text: "能够讨论、预见的"}, {val: "b", text: "随机的,因情景而变"}]},
+            {id: 57, text: "电话响了,你", options: [{val: "a", text: "马上冲过去接"}, {val: "b", text: "希望别人去接"}]},
+            {id: 58, text: "你赞赏自己", options: [{val: "a", text: "对现实的丰富认知"}, {val: "b", text: "生动的想象力"}]},
+            {id: 59, text: "你更会受什么支配", options: [{val: "a", text: "基本原则"}, {val: "b", text: "联想、暗示"}]},
+            {id: 60, text: "哪个看来是更严重的错误", options: [{val: "a", text: "过分热情、感情用事"}, {val: "b", text: "过分客观、没人情味"}]},
+            {id: 61, text: "你觉得自己基本上是", options: [{val: "a", text: "精明而讲实际的"}, {val: "b", text: "软心肠的"}]},
+            {id: 62, text: "你更喜欢哪种情形", options: [{val: "a", text: "有组织的、安排好的"}, {val: "b", text: "没有组织的、没安排好的"}]},
+            {id: 63, text: "你是一个", options: [{val: "a", text: "一成不变,而非变化无常的人"}, {val: "b", text: "变化无常,而非一成不变的人"}]},
+            {id: 64, text: "你倾向于是一个", options: [{val: "a", text: "容易接近的人"}, {val: "b", text: "不太合群的人"}]},
+            {id: 65, text: "在写作时,你偏爱", options: [{val: "a", text: "直接表达意思"}, {val: "b", text: "用较多修辞手法"}]},
+            {id: 66, text: "什么对你来说更困难", options: [{val: "a", text: "与他人保持一致"}, {val: "b", text: "利用他人"}]},
+            {id: 67, text: "你更希望自己成为哪种人", options: [{val: "a", text: "拥有清晰的条理"}, {val: "b", text: "拥有强烈的感情"}]},
+            {id: 68, text: "什么是更严重的缺点", options: [{val: "a", text: "不分青红皂白"}, {val: "b", text: "吹毛求疵"}]},
+            {id: 69, text: "你偏爱", options: [{val: "a", text: "计划好的事情"}, {val: "b", text: "没有计划过的事情"}]},
+            {id: 70, text: "你是", options: [{val: "a", text: "深思熟虑甚于一时冲动"}, {val: "b", text: "一时冲动甚于深思熟虑"}]}
+        ];
+
+        let currentQuestionIndex = 0;
+        let answers = {};
+        let userInfo = {};
+        let finalResult = "";
+        let finalScores = {};
+
+        function initTest() {
+            const container = document.getElementById('questions-container');
+            questionsData.forEach((q, index) => {
+                const block = document.createElement('div');
+                block.className = `question-block ${index === 0 ? 'active' : ''}`;
+                block.id = `question-${index}`;
+                
+                let html = `<div class="question-text">${q.id}. ${q.text}</div>`;
+                q.options.forEach(opt => {
+                    html += `
+                        <label class="option" onclick="autoNext(${index})">
+                            <input type="radio" name="q${q.id}" value="${opt.val}">
+                            ${opt.val.toUpperCase()}. ${opt.text}
+                        </label>
+                    `;
+                });
+                block.innerHTML = html;
+                container.appendChild(block);
+            });
+        }
+
+        function startTest() {
+            const nameInput = document.getElementById('userName');
+            if (!nameInput.value.trim()) {
+                document.getElementById('nameError').style.display = 'block';
+                return;
+            }
+            
+            userInfo = {
+                name: nameInput.value.trim(),
+                department: document.getElementById('department').value.trim(),
+                date: new Date().toLocaleDateString()
+            };
+            
+            document.getElementById('intro-screen').style.display = 'none';
+            document.getElementById('test-screen').style.display = 'block';
+            initTest();
+        }
+
+        function updateNav() {
+            document.getElementById('btnPrev').disabled = currentQuestionIndex === 0;
+            document.getElementById('progress').innerText = `题目: ${currentQuestionIndex + 1} / 70`;
+            
+            if (currentQuestionIndex === questionsData.length - 1) {
+                document.getElementById('btnNext').style.display = 'none';
+                document.getElementById('btnSubmit').style.display = 'block';
+            } else {
+                document.getElementById('btnNext').style.display = 'block';
+                document.getElementById('btnSubmit').style.display = 'none';
+            }
+            
+            document.querySelectorAll('.question-block').forEach((el, index) => {
+                el.classList.toggle('active', index === currentQuestionIndex);
+            });
+        }
+
+        function prevQuestion() {
+            if (currentQuestionIndex > 0) {
+                currentQuestionIndex--;
+                updateNav();
+            }
+        }
+
+        function nextQuestion() {
+            const currentQ = questionsData[currentQuestionIndex];
+            const selected = document.querySelector(`input[name="q${currentQ.id}"]:checked`);
+            
+            if (!selected) {
+                alert("请先选择一个答案！");
+                return;
+            }
+            
+            answers[currentQ.id] = selected.value;
+            
+            if (currentQuestionIndex < questionsData.length - 1) {
+                currentQuestionIndex++;
+                updateNav();
+            }
+        }
+
+        function autoNext(index) {
+            if(index === currentQuestionIndex) {
+                 setTimeout(() => {
+                    if (currentQuestionIndex < questionsData.length - 1) {
+                        const currentQ = questionsData[currentQuestionIndex];
+                        const selected = document.querySelector(`input[name="q${currentQ.id}"]:checked`);
+                        if(selected) {
+                           answers[currentQ.id] = selected.value;
+                           currentQuestionIndex++;
+                           updateNav();
+                        }
+                    }
+                 }, 300);
+            }
+        }
+
+        function submitTest() {
+            const currentQ = questionsData[currentQuestionIndex];
+            const selected = document.querySelector(`input[name="q${currentQ.id}"]:checked`);
+            if (!selected) {
+                alert("请完成最后一题！");
+                return;
+            }
+            answers[currentQ.id] = selected.value;
+
+            calculateResult();
+        }
+
+        function calculateResult() {
+            // E/I
+            const eiQuestions = [1, 8, 15, 22, 29, 36, 43, 50, 57, 64];
+            let eScore = 0; let iScore = 0;
+            eiQuestions.forEach(q => answers[q] === 'a' ? eScore++ : iScore++);
+            // 平局判I
+            const eiRes = eScore > iScore ? 'E' : 'I';
+
+            // S/N
+            const snQuestions = [2, 3, 9, 10, 16, 17, 23, 24, 30, 31, 37, 38, 44, 45, 51, 52, 58, 59, 65, 66];
+            let sScore = 0; let nScore = 0;
+            snQuestions.forEach(q => answers[q] === 'a' ? sScore++ : nScore++);
+            // 平局判N
+            const snRes = sScore > nScore ? 'S' : 'N';
+
+            // T/F
+            const tfQuestions = [4, 5, 11, 12, 18, 19, 25, 26, 32, 33, 39, 40, 46, 47, 53, 54, 60, 61, 67, 68];
+            let tScore = 0; let fScore = 0;
+            tfQuestions.forEach(q => answers[q] === 'a' ? tScore++ : fScore++);
+            // 平局判F
+            const tfRes = tScore > fScore ? 'T' : 'F';
+
+            // J/P
+            const jpQuestions = [6, 7, 13, 14, 20, 21, 27, 28, 34, 35, 41, 42, 48, 49, 55, 56, 62, 63, 69, 70];
+            let jScore = 0; let pScore = 0;
+            jpQuestions.forEach(q => answers[q] === 'a' ? jScore++ : pScore++);
+            // 平局判P
+            const jpRes = jScore > pScore ? 'J' : 'P';
+
+            finalResult = eiRes + snRes + tfRes + jpRes;
+            finalScores = {
+                'E': eScore, 'I': iScore,
+                'S': sScore, 'N': nScore,
+                'T': tScore, 'F': fScore,
+                'J': jScore, 'P': pScore
+            };
+
+            document.getElementById('test-screen').style.display = 'none';
+            document.getElementById('result-screen').style.display = 'block';
+            document.getElementById('mbti-type').innerText = finalResult;
+        }
+
+        function exportToExcel() {
+            // 准备导出数据
+            const data = [
+                ['MBTI 性格测试报告'],
+                [],
+                ['基本信息'],
+                ['测试人姓名', userInfo.name],
+                ['所属部门', userInfo.department || '未填写'],
+                ['测试日期', userInfo.date],
+                ['最终结果类型', finalResult],
+                [],
+                ['维度得分详情'],
+                ['外向 (E) 得分', finalScores.E, '内向 (I) 得分', finalScores.I],
+                ['感觉 (S) 得分', finalScores.S, '直觉 (N) 得分', finalScores.N],
+                ['思考 (T) 得分', finalScores.T, '情感 (F) 得分', finalScores.F],
+                ['判断 (J) 得分', finalScores.J, '知觉 (P) 得分', finalScores.P],
+                [],
+                ['详细答题记录'],
+                ['题号', '题目', '您的选择']
+            ];
+
+            // 添加答题记录
+            questionsData.forEach(q => {
+                const ansVal = answers[q.id];
+                const selectedText = q.options.find(opt => opt.val === ansVal).text;
+                data.push([q.id, q.text, `${ansVal.toUpperCase()}: ${selectedText}`]);
+            });
+
+            // 创建工作簿并下载
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            
+            // 设置列宽
+            ws['!cols'] = [{wch: 10}, {wch: 40}, {wch: 30}, {wch: 15}];
+            
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "测试结果");
+            
+            XLSX.writeFile(wb, `MBTI测试结果_${userInfo.name}_${finalResult}.xlsx`);
+        }
+    </script>
+</body>
+</html>
